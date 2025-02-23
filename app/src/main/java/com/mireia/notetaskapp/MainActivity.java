@@ -10,23 +10,20 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+import androidx.lifecycle.ViewModelProvider;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.bottomsheet.BottomSheetDialog;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
-import java.util.ArrayList;
-import java.util.List;
 
 public class MainActivity extends AppCompatActivity {
 
     private RecyclerView recyclerView;
     private FloatingActionButton fab;
-    private List<NoteTask> noteTaskList;
-    //creacion del adaptador para la recyclerView
     private NoteTaskAdapter noteTaskAdapter;
-
+    private NoteTaskViewModel noteTaskViewModel;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,70 +36,56 @@ public class MainActivity extends AppCompatActivity {
             return insets;
         });
 
-        //se inician los elementos de la vista y la lista de objetos local
+        noteTaskViewModel = new ViewModelProvider(this).get(NoteTaskViewModel.class);
+
         recyclerView = findViewById(R.id.recyclerView);
         fab = findViewById(R.id.fab);
-        noteTaskList = new ArrayList<>();
+        noteTaskAdapter = new NoteTaskAdapter(noteTask -> showBottomDialog(noteTask));
 
-        //a cada uno de los elementos de la lista se le pueden realizar acciones y debe ser notificado al adaptador
-        noteTaskAdapter = new NoteTaskAdapter(noteTaskList, noteTask -> showBottomDialog(noteTask));
-
-        //se situa el adaptador a la recycler creada
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         recyclerView.setAdapter(noteTaskAdapter);
 
-        //mostrar el dialog inicial donde se agregan los objetos
-        //sepone null para que no entre en la opcion de editar objeto seleccionado
-        fab.setOnClickListener(v -> showInicialDialog(null));
+        // Observar cambios en la lista de tareas
+        noteTaskViewModel.getNoteTaskList().observe(this, noteTasks -> {
+            noteTaskAdapter.setNoteTaskList(noteTasks);
+            noteTaskAdapter.notifyDataSetChanged();
+        });
 
+        fab.setOnClickListener(v -> showInicialDialog(null));
     }
 
-    private void showInicialDialog(NoteTask noteTaskEdit){
-
-        //el objeto que se esta creando se le debe pasar al dialog para poder rellenarlo
-        //se le pone el dialog que se ha creado anteriormente
+    private void showInicialDialog(NoteTask noteTaskEdit) {
         NoteTaskDialogFragment dialogFragment = new NoteTaskDialogFragment();
-        //si esta habilitada la opcion de editar se le pasa el objeto seleccionado
-        if(noteTaskEdit != null){
+        if (noteTaskEdit != null) {
             Bundle args = new Bundle();
             args.putParcelable("homework", noteTaskEdit);
             dialogFragment.setArguments(args);
         }
-        dialogFragment.setOnNoteTaskSavedListener( noteTask -> {
-            if(noteTaskEdit == null){
-                noteTaskList.add(noteTask);
-            } else{
-                noteTaskList.set(noteTaskList.indexOf(noteTaskEdit), noteTask);
+        dialogFragment.setOnNoteTaskSavedListener(noteTask -> {
+            if (noteTaskEdit == null) {
+                noteTaskViewModel.addNoteTask(noteTask);
+            } else {
+                noteTaskViewModel.updateNoteTask(noteTaskEdit, noteTask);
             }
-            //se indica que han habido cambios al adaptador para que revise de nuevo la recycler
-            noteTaskAdapter.notifyDataSetChanged();
         });
-
         dialogFragment.show(getSupportFragmentManager(), "AddHomeworkDialog");
-
     }
 
-    //se pone un dialog donde se muestran opciones al clickar un elemento de la lista
-    private void showBottomDialog(NoteTask noteTask){
-        //se crea el dialog adicional y se infla la vista del dialogo
+    private void showBottomDialog(NoteTask noteTask) {
         BottomSheetDialog bottomSheetDialog = new BottomSheetDialog(this);
         View v = getLayoutInflater().inflate(R.layout.dialog_options, null);
 
-        //opcion de eliminar dentro del dialog
-        v.findViewById(R.id.deleteOption).setOnClickListener(view ->{
+        v.findViewById(R.id.deleteOption).setOnClickListener(view -> {
             bottomSheetDialog.dismiss();
             showDeleteDialog(noteTask);
         });
-        //opcion de edicion
-        v.findViewById(R.id.editOption).setOnClickListener(view ->{
+        v.findViewById(R.id.editOption).setOnClickListener(view -> {
             bottomSheetDialog.dismiss();
             showInicialDialog(noteTask);
         });
-        //opcion para marcar el boolean de completado (true, false)
-        v.findViewById(R.id.completeOption).setOnClickListener(view ->{
+        v.findViewById(R.id.completeOption).setOnClickListener(view -> {
             bottomSheetDialog.dismiss();
-            noteTask.setCompleted(true);
-            noteTaskAdapter.notifyDataSetChanged();
+            noteTaskViewModel.completeNoteTask(noteTask);
             Toast.makeText(this, "Tarea completada", Toast.LENGTH_SHORT).show();
         });
 
@@ -110,14 +93,11 @@ public class MainActivity extends AppCompatActivity {
         bottomSheetDialog.show();
     }
 
-    private void showDeleteDialog(NoteTask noteTask){
+    private void showDeleteDialog(NoteTask noteTask) {
         new AlertDialog.Builder(this)
                 .setTitle("Confirmar eliminación")
-                .setMessage("Si se eleimina la terea no se podra recuperar.")
-                .setPositiveButton("Eliminar", (dialog, which) -> {
-                    noteTaskList.remove(noteTask);
-                    noteTaskAdapter.notifyDataSetChanged();
-                })
+                .setMessage("Si se elimina la tarea no se podrá recuperar.")
+                .setPositiveButton("Eliminar", (dialog, which) -> noteTaskViewModel.deleteNoteTask(noteTask)) // Eliminar tarea
                 .setNegativeButton("Cancelar", null)
                 .show();
     }
